@@ -1,6 +1,7 @@
-﻿using Loan_Management_System.Exceptions;
+using Loan_Management_System.Exceptions;
 using Loan_Management_System.Model;
 using Loan_Management_System.Util;
+using LoanManagement.Utility;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -13,19 +14,26 @@ namespace Loan_Management_System.DAO
 {
     internal class LoanRepository:ILoanRepository
     {
-        private readonly string connectionString = DBConnUtil.GetDBConn();
+        SqlConnection sqlConnection = null;
+        SqlCommand sqlCommand = null;
+
+        public LoanRepository()
+        {
+            sqlConnection = new SqlConnection(DbConnUtil.GetConnString());
+            sqlCommand = new SqlCommand();
+        }
 
         // ApplyLoan Method
         public void ApplyLoan(Loan loan)
         {
             try
             {
-                using (SqlConnection conn = new SqlConnection(connectionString))
+                using (SqlConnection conn = new SqlConnection(DbConnUtil.GetConnString()))
                 {
                     conn.Open();
                     Console.WriteLine($"CustomerId: {loan.CustomerId}, PrincipalAmount: {loan.PrincipalAmount}, InterestRate: {loan.InterestRate}, LoanTerm: {loan.LoanTerm}, LoanType: {loan.LoanType}, LoanStatus: {loan.LoanStatus}");
                     StringBuilder queryBuilder = new StringBuilder();
-                    queryBuilder.Append("INSERT INTO Loans (CustomerId, PrincipalAmount, InterestRate, LoanTerm, LoanType, LoanStatus) ");
+                    queryBuilder.Append("INSERT INTO Loans (CustomerID, PrincipalAmount, InterestRate, LoanTerm, LoanType, LoanStatus) ");
                     queryBuilder.Append("VALUES (@CustomerId, @PrincipalAmount, @InterestRate, @LoanTerm, @LoanType, @LoanStatus)");
                     SqlCommand cmd = new SqlCommand(queryBuilder.ToString(), conn);
 
@@ -75,68 +83,32 @@ namespace Loan_Management_System.DAO
         // GetAllLoans Method
        public List<Loan> GetAllLoans()
 {
-    List<Loan> loans = new List<Loan>();
+            List<Loan> loans = new List<Loan>();
 
-    try
-    {
-        using (SqlConnection conn = new SqlConnection(connectionString))
-        {
-            conn.Open();
-            string query = "SELECT * FROM Loans";
-            SqlCommand cmd = new SqlCommand(query, conn);
-            SqlDataReader reader = cmd.ExecuteReader();
+            sqlCommand.CommandText = "SELECT LoanID, CustomerID, PrincipalAmount, InterestRate, LoanTerm, LoanType, LoanStatus FROM Loan";
+            sqlCommand.Connection = sqlConnection;
 
-            while (reader.Read())
+            sqlConnection.Open();
+            using (SqlDataReader reader = sqlCommand.ExecuteReader())
             {
-                Loan loan;
-                string loanType = reader["LoanType"].ToString();
-                int loanId = Convert.ToInt32(reader["LoanId"]);
-                Customer customer = new Customer { CustomerId = Convert.ToInt32(reader["CustomerId"]) }; // Assuming you fetch the customer details properly
-
-                if (loanType.Equals("HomeLoan", StringComparison.OrdinalIgnoreCase))
+                while (reader.Read())
                 {
-                    loan = new HomeLoan(
-                        loanId,
-                        customer,
-                        Convert.ToDecimal(reader["PrincipalAmount"]),
-                        Convert.ToDecimal(reader["InterestRate"]),
-                        Convert.ToInt32(reader["LoanTerm"]),
-                        loanType,
-                        reader["LoanStatus"].ToString(),
-                        reader["PropertyAddress"].ToString(), // Assuming you have this in the database
-                        Convert.ToInt32(reader["PropertyValue"]) // Assuming you have this in the database
-                    );
+                    Loan loan = new Loan()
+                    {
+                        LoanId = (int)reader["LoanID"],
+                        CustomerId = (int)reader["CustomerID"], // Assuming you have a CustomerID property
+                        PrincipalAmount = (int)reader["PrincipalAmount"],
+                        InterestRate = (decimal)reader["InterestRate"],
+                        LoanTerm = (int)reader["LoanTerm"],
+                        LoanType = (string)reader["LoanType"],
+                        LoanStatus = (string)reader["LoanStatus"]
+                    };
+                    loans.Add(loan);
                 }
-                else if (loanType.Equals("CarLoan", StringComparison.OrdinalIgnoreCase))
-                {
-                    loan = new CarLoan(
-                        loanId,
-                        //customer,
-                        Convert.ToDecimal(reader["PrincipalAmount"]),
-                        Convert.ToDecimal(reader["InterestRate"]),
-                        Convert.ToInt32(reader["LoanTerm"]),
-                        loanType,
-                        reader["LoanStatus"].ToString(),
-                        reader["CarModel"].ToString(), // Assuming you have this in the database
-                        Convert.ToInt32(reader["CarValue"]) // Assuming you have this in the database
-                    );
-                }
-                else
-                {
-                    throw new InvalidLoanException($"Unknown loan type: {loanType}");
-                }
-
-                loans.Add(loan);
             }
+            sqlConnection.Close();
+            return loans;
         }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine("Error while retrieving loans: " + ex.Message);
-    }
-
-    return loans;
-}
 
 
         public Customer GetCustomerById(int customerId)
@@ -151,7 +123,7 @@ namespace Loan_Management_System.DAO
 
             try
             {
-                using (SqlConnection conn = new SqlConnection(connectionString))
+                using (SqlConnection conn = new SqlConnection(DbConnUtil.GetConnString()))
                 {
                     conn.Open();
                     string query = "SELECT * FROM Loans WHERE LoanId = @LoanId";
@@ -213,7 +185,7 @@ namespace Loan_Management_System.DAO
                     return;
                 }
 
-                using (SqlConnection conn = new SqlConnection(connectionString))
+                using (SqlConnection conn = new SqlConnection(DbConnUtil.GetConnString()))
                 {
                     conn.Open();
                     string query = "UPDATE Loans SET PrincipalAmount = PrincipalAmount - @Amount WHERE LoanId = @LoanId";
